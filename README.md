@@ -51,7 +51,21 @@ The automated deployment creates:
 
 ## 🔧 Usage
 
-### Automated Deployment (Recommended)
+### 1. Configuration
+
+Before deploying, you must configure your environment variables:
+
+1. Navigate to the `terraform` directory:
+   ```bash
+   cd terraform
+   ```
+2. Copy the example variables file:
+   ```bash
+   cp terraform.tfvars.example terraform.tfvars
+   ```
+3. Edit `terraform.tfvars` with your specific configuration (resource names, GitHub details, etc.).
+
+### 2. Automated Deployment (Recommended)
 
 **Linux / macOS:**
 ```bash
