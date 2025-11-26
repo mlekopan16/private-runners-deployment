@@ -1,0 +1,529 @@
+name: Test on Self-Hosted Runner
+
+# This workflow demonstrates using the Azure Container Apps self-hosted GitHub runner
+# Configure your runner labels in terraform.tfvars, then use those labels in the runs-on field
+
+on:
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      runner-labels:
+        description: 'Runner labels to use'
+        required: false
+        default: 'aca-self-hosted'
+        type: string
+      test-type:
+        description: 'Type of tests to run'
+        required: false
+        default: 'basic'
+        type: choice
+        options:
+          - basic
+          - comprehensive
+          - container
+          - performance
+
+  # Automatic trigger on pushes and PRs
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  # Use the runner label from workflow input or default
+  RUNNER_LABEL: ${{ github.event.inputs.runner-labels || 'aca-self-hosted' }}
+
+jobs:
+  # Basic runner validation job
+  validate-runner:
+    runs-on: ${{ env.RUNNER_LABEL }}
+    name: Validate Runner Environment
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🖥️ Display Runner Information
+        run: |
+          echo "=== GitHub Runner Information ==="
+          echo "Runner Name: $RUNNER_NAME"
+          echo "Runner OS: $(uname -a)"
+          echo "Runner User: $(whoami)"
+          echo "Runner Home: $HOME"
+          echo "Working Directory: $(pwd)"
+          echo "Runner Architecture: $(uname -m)"
+          echo "Available Memory: $(free -h | grep '^Mem:' | awk '{print $7}')"
+
+      - name: 🐳 Test Docker Availability
+        run: |
+          echo "=== Docker Information ==="
+          if command -v docker &> /dev/null; then
+            echo "✅ Docker is available"
+            docker --version
+            docker info | head -10
+
+            echo "=== Running test container ==="
+            docker run --rm hello-world
+          else
+            echo "❌ Docker is not available"
+            exit 1
+          fi
+
+      - name: 🌐 Test Network Connectivity
+        run: |
+          echo "=== Network Connectivity Tests ==="
+
+          # Test GitHub connectivity
+          echo "Testing GitHub API connectivity..."
+          if curl -s -o /dev/null -w "%{http_code}" https://api.github.com | grep -q "200"; then
+            echo "✅ GitHub API accessible"
+          else
+            echo "❌ GitHub API not accessible"
+            exit 1
+          fi
+
+          # Test internet connectivity
+          echo "Testing general internet connectivity..."
+          if ping -c 1 8.8.8.8 &> /dev/null; then
+            echo "✅ Internet accessible"
+          else
+            echo "❌ Internet not accessible"
+          fi
+
+      - name: 🛠️ Check Available Tools
+        run: |
+          echo "=== Available Development Tools ==="
+
+          tools=("git" "curl" "wget" "jq" "unzip" "tar")
+          for tool in "${tools[@]}"; do
+            if command -v $tool &> /dev/null; then
+              version=$($tool --version 2>&1 | head -1 || echo "unknown version")
+              echo "✅ $tool: $version"
+            else
+              echo "❌ $tool: not found"
+            fi
+          done
+
+          echo ""
+          echo "=== Programming Languages ==="
+
+          # Check Node.js
+          if command -v node &> /dev/null; then
+            echo "✅ Node.js: $(node --version)"
+            echo "   npm: $(npm --version)"
+          else
+            echo "❌ Node.js: not found"
+          fi
+
+          # Check Python
+          if command -v python3 &> /dev/null; then
+            echo "✅ Python: $(python3 --version)"
+            if command -v pip3 &> /dev/null; then
+              echo "   pip: $(pip3 --version)"
+            fi
+          else
+            echo "❌ Python: not found"
+          fi
+
+          # Check Java
+          if command -v java &> /dev/null; then
+            echo "✅ Java: $(java -version 2>&1 | head -1)"
+          else
+            echo "❌ Java: not found"
+          fi
+
+  # Comprehensive test suite
+  comprehensive-tests:
+    runs-on: ${{ env.RUNNER_LABEL }}
+    name: Comprehensive Test Suite
+    needs: validate-runner
+    if: github.event.inputs.test-type == 'comprehensive' || github.event.inputs.test-type == ''
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Test Environment
+        run: |
+          echo "=== Setting up test environment ==="
+
+          # Create test directories
+          mkdir -p test-results
+          mkdir -p temp-workspace
+
+          # Export test variables
+          export TEST_RESULTS_DIR="./test-results"
+          export TEMP_DIR="./temp-workspace"
+
+          echo "TEST_RESULTS_DIR=$TEST_RESULTS_DIR" >> $GITHUB_ENV
+          echo "TEMP_DIR=$TEMP_DIR" >> $GITHUB_ENV
+
+      - name: 📊 Performance Baseline
+        run: |
+          echo "=== Performance Baseline ==="
+
+          # CPU benchmark
+          echo "CPU Performance:"
+          time $(python3 -c "import math; [math.sqrt(i) for i in range(1000000)]" 2>/dev/null || echo "Python3 not available for CPU test")
+
+          # Memory test
+          echo "Memory Information:"
+          free -h
+
+          # Disk I/O test
+          echo "Disk I/O Performance:"
+          dd if=/dev/zero of=$TEMP_DIR/disktest bs=1M count=100 2>&1 | grep -E "copied|MB/s"
+          rm -f $TEMP_DIR/disktest
+
+      - name: 🐳 Container Operations Test
+        run: |
+          echo "=== Container Operations Test ==="
+
+          # Build a simple test image
+          cat > $TEMP_DIR/Dockerfile << 'EOF'
+          FROM ubuntu:22.04
+          RUN echo "Hello from test container" > /test.txt
+          CMD cat /test.txt
+          EOF
+
+          # Build and run the test image
+          cd $TEMP_DIR
+          docker build -t test-image .
+
+          echo "Running test container..."
+          docker run --rm test-image
+
+          # Cleanup
+          docker rmi test-image
+          cd -
+
+      - name: 📁 File System Operations
+        run: |
+          echo "=== File System Operations Test ==="
+
+          # Test various file operations
+          echo "Testing file creation and operations..."
+
+          # Create test files
+          echo "Test content" > $TEMP_DIR/test1.txt
+          echo "More test content" > $TEMP_DIR/test2.txt
+
+          # Test file operations
+          cp $TEMP_DIR/test1.txt $TEMP_DIR/test1_copy.txt
+          mv $TEMP_DIR/test2.txt $TEMP_DIR/test2_renamed.txt
+          tar -czf $TEMP_DIR/test.tar.gz $TEMP_DIR/test1*.txt
+
+          # Verify operations
+          if [ -f $TEMP_DIR/test1_copy.txt ] && [ -f $TEMP_DIR/test2_renamed.txt ]; then
+            echo "✅ File operations successful"
+          else
+            echo "❌ File operations failed"
+            exit 1
+          fi
+
+      - name: 📋 Test Results Summary
+        run: |
+          echo "=== Test Results Summary ==="
+          echo "All tests completed successfully!"
+
+          # Create summary report
+          cat > $TEST_RESULTS_DIR/test-summary.txt << EOF
+          Test Execution Summary
+          ========================
+          Runner: $RUNNER_NAME
+          Timestamp: $(date)
+          Workflow: ${{ github.workflow }}
+          Job: ${{ github.job }}
+
+          Tests Passed:
+          ✅ Runner validation
+          ✅ Docker operations
+          ✅ Network connectivity
+          ✅ File system operations
+          ✅ Performance baseline
+
+          EOF
+
+          cat $TEST_RESULTS_DIR/test-summary.txt
+
+  # Container-focused tests
+  container-tests:
+    runs-on: ${{ env.RUNNER_LABEL }}
+    name: Container Workflow Tests
+    needs: validate-runner
+    if: github.event.inputs.test-type == 'container' || github.event.inputs.test-type == ''
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐳 Multi-Stage Docker Build Test
+        run: |
+          echo "=== Multi-Stage Docker Build Test ==="
+
+          # Create a multi-stage Dockerfile for testing
+          cat > Dockerfile.test << 'EOF'
+          # Build stage
+          FROM node:18-alpine AS builder
+          WORKDIR /app
+          COPY package*.json ./
+          RUN npm ci --only=production
+
+          # Production stage
+          FROM node:18-alpine
+          WORKDIR /app
+          COPY --from=builder /app/node_modules ./node_modules
+          COPY . .
+          EXPOSE 3000
+          CMD ["node", "server.js"]
+          EOF
+
+          # Create a simple package.json
+          cat > package.json << 'EOF'
+          {
+            "name": "test-app",
+            "version": "1.0.0",
+            "scripts": {
+              "start": "node server.js"
+            }
+          }
+          EOF
+
+          # Create a simple server.js
+          cat > server.js << 'EOF'
+          const http = require('http');
+          const server = http.createServer((req, res) => {
+            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.end('Hello from test container!');
+          });
+
+          server.listen(3000, () => {
+            console.log('Server running on port 3000');
+          });
+          EOF
+
+          echo "Building multi-stage Docker image..."
+          docker build -f Dockerfile.test -t test-multistage .
+
+          # Run container in background
+          docker run -d --name test-server -p 3000:3000 test-multistage
+
+          # Wait for container to start
+          sleep 5
+
+          # Test if server is responding
+          if curl -s http://localhost:3000 | grep -q "Hello"; then
+            echo "✅ Multi-stage build and container test successful"
+          else
+            echo "❌ Container test failed"
+            docker logs test-server
+            exit 1
+          fi
+
+          # Cleanup
+          docker stop test-server
+          docker rm test-server
+          docker rmi test-multistage
+
+      - name: 🔄 Docker Compose Test
+        run: |
+          echo "=== Docker Compose Test ==="
+
+          # Create docker-compose.yml for testing
+          cat > docker-compose.test.yml << 'EOF'
+          version: '3.8'
+          services:
+            web:
+              image: nginx:alpine
+              ports:
+                - "8080:80"
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+
+            redis:
+              image: redis:alpine
+              command: redis-server --appendonly yes
+              volumes:
+                - redis_data:/data
+
+          volumes:
+            redis_data:
+          EOF
+
+          echo "Starting Docker Compose services..."
+          docker-compose -f docker-compose.test.yml up -d
+
+          # Wait for services to start
+          sleep 10
+
+          # Test services
+          echo "Testing nginx service..."
+          if curl -s http://localhost:8080 | grep -q "nginx"; then
+            echo "✅ Nginx service is running"
+          else
+            echo "❌ Nginx service test failed"
+            exit 1
+          fi
+
+          echo "Testing Redis service..."
+          if docker exec $(docker-compose -f docker-compose.test.yml ps -q redis) redis-cli ping | grep -q "PONG"; then
+            echo "✅ Redis service is running"
+          else
+            echo "❌ Redis service test failed"
+            exit 1
+          fi
+
+          # Cleanup
+          docker-compose -f docker-compose.test.yml down
+
+  # Performance and stress tests
+  performance-tests:
+    runs-on: ${{ env.RUNNER_LABEL }}
+    name: Performance Tests
+    needs: validate-runner
+    if: github.event.inputs.test-type == 'performance' || github.event.inputs.test-type == ''
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🚀 CPU Performance Test
+        run: |
+          echo "=== CPU Performance Test ==="
+
+          # Prime number calculation test
+          echo "Running prime number calculation benchmark..."
+          start_time=$(date +%s.%N)
+
+          python3 -c "
+          import math
+          import time
+          import sys
+
+          def is_prime(n):
+              if n < 2:
+                  return False
+              for i in range(2, int(math.sqrt(n)) + 1):
+                  if n % i == 0:
+                      return False
+              return True
+
+          # Find primes up to 50000
+          primes = [i for i in range(2, 50000) if is_prime(i)]
+          print(f'Found {len(primes)} primes')
+          " 2>/dev/null || echo "Python3 not available for performance test"
+
+          end_time=$(date +%s.%N)
+          duration=$(echo "$end_time - $start_time" | bc -l 2>/dev/null || echo "N/A")
+          echo "CPU test duration: ${duration}s"
+
+      - name: 💾 Memory Performance Test
+        run: |
+          echo "=== Memory Performance Test ==="
+
+          # Memory allocation test
+          echo "Running memory allocation test..."
+          start_time=$(date +%s.%N)
+
+          python3 -c "
+          import sys
+
+          # Allocate and manipulate large arrays
+          data = []
+          for i in range(1000000):
+              data.append(i * 2)
+
+          # Process the data
+          total = sum(data)
+          avg = total / len(data)
+
+          print(f'Processed {len(data)} items, average: {avg}')
+          " 2>/dev/null || echo "Python3 not available for memory test"
+
+          end_time=$(date +%s.%N)
+          duration=$(echo "$end_time - $start_time" | bc -l 2>/dev/null || echo "N/A")
+          echo "Memory test duration: ${duration}s"
+
+      - name: 🌐 Network Performance Test
+        run: |
+          echo "=== Network Performance Test ==="
+
+          # Network latency test
+          echo "Testing network latency..."
+
+          # Test GitHub API response time
+          for i in {1..5}; do
+            response_time=$(curl -o /dev/null -s -w "%{time_total}" https://api.github.com)
+            echo "Request $i: ${response_time}s"
+          done
+
+          # Download speed test
+          echo "Testing download speed..."
+          curl -o /dev/null -s -w "Download speed: %{speed_download} bytes/sec\n" \
+            https://github.com/github/gitignore/raw/main/README.md
+
+  # Final summary and cleanup
+  job-summary:
+    runs-on: ${{ env.RUNNER_LABEL }}
+    name: Job Summary
+    needs: [validate-runner, comprehensive-tests, container-tests, performance-tests]
+    if: always()
+
+    steps:
+      - name: 📊 Generate Job Summary
+        run: |
+          echo "# 🎯 GitHub Runner Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📋 Test Execution Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Runner**: ${{ env.RUNNER_LABEL }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workflow**: ${{ github.workflow }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository**: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## ✅ Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Validate Runner | ${{ needs.validate-runner.result }} | ${{ needs.validate-runner.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Comprehensive Tests | ${{ needs.comprehensive-tests.result }} | ${{ needs.comprehensive-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Tests | ${{ needs.container-tests.result }} | ${{ needs.container-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Performance Tests | ${{ needs.performance-tests.result }} | ${{ needs.performance-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## 🏁 Overall Result" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ needs.validate-runner.result }}" == "success" ]]; then
+            echo "🎉 **Your Azure Container Apps GitHub Runner is working correctly!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "You can now use the `${{ env.RUNNER_LABEL }}` label in your GitHub Actions workflows." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Runner validation failed. Please check the logs above.**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📚 Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Review the test results above" >> $GITHUB_STEP_SUMMARY
+          echo "2. Copy the workflow example for your own projects" >> $GITHUB_STEP_SUMMARY
+          echo "3. Customize the runner labels in your Terraform configuration" >> $GITHUB_STEP_SUMMARY
+          echo "4. Configure additional tools in the Dockerfile if needed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Generated by Azure Container Apps GitHub Runner test workflow*" >> $GITHUB_STEP_SUMMARY
+
+      - name: 🧹 Cleanup Workspace
+        if: always()
+        run: |
+          echo "Cleaning up workspace..."
+
+          # Remove temporary files and directories
+          rm -rf test-results/ temp-workspace/
+          rm -f Dockerfile.test docker-compose.test.yml
+          rm -f package.json server.js
+
+          # Clean Docker resources
+          docker system prune -f
+
+          echo "Workspace cleanup completed"

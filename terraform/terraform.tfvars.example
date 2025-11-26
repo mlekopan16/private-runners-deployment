@@ -1,0 +1,42 @@
+# Azure Configuration
+location                    = "uksouth"
+resource_group_name         = "rg-github-runner-aca"
+
+# Resource Naming
+acr_name                    = "acrgithubrunnerUNIQUE" # Must be globally unique (lowercase, alphanumeric)
+container_app_environment_name = "env-github-runner"
+github_runner_job_name      = "job-github-runner"
+
+# GitHub Configuration
+github_organization         = "your-username"  # Your GitHub username or Organization name
+github_repository           = "your-repo-name" # Repository name (required for repo runners)
+github_runner_labels        = ["aca-self-hosted", "linux", "x64"]
+github_runner_group         = "default"
+
+# Deployment Configuration
+deploy_runner_job           = false  # Set to false for initial deployment, true after image build
+
+# Container Image Configuration
+runner_image_name           = "github-runner"
+runner_image_tag            = "latest"
+
+# Container App Job Configuration
+container_app_job_cpu       = "2.0"
+container_app_job_memory    = "4Gi"
+job_execution_timeout       = 3600
+
+# ACR Task Configuration (Optional - for Git triggers)
+enable_git_trigger          = false
+acr_task_name               = "build-github-runner"
+dockerfile_path             = "docker/Dockerfile"
+context_path                = "docker"
+
+# Monitoring
+enable_monitoring           = true
+
+# Tags
+tags = {
+  "Project"     = "GitHub-Runner-ACA"
+  "Environment" = "Production"
+  "ManagedBy"   = "Terraform"
+}

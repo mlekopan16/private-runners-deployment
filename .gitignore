@@ -1,0 +1,23 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+*.tfplan
+.terraform.lock.hcl
+
+# Secrets
+.env
+.secrets
+
+# Azure
+.azure/
+
+# Docker
+.image-reference
+
+# Logs
+*.log
+
+# OS
+.DS_Store
