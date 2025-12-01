@@ -20,9 +20,11 @@ Automated deployment of self-hosted GitHub Actions runners using Azure Container
 - GitHub Personal Access Token with `repo` or `admin:org` scope
 
 > [!IMPORTANT]
-> **GitHub PAT Requirement**: Use  **Classic** Personal Access Token with `repo` scope.
+> **GitHub PAT Requirement**: This project currently supports **Classic Personal Access Tokens** only. Use a Classic PAT with `repo` scope (or `admin:org` for organization runners).
 >
-> **Note**: Fine-grained tokens *can* be used, but Classic tokens are recommended for simplicity and broader compatibility with self-hosted runner registration.
+> **Future Plans**: Support for Fine-grained Personal Access Tokens and / or GitHub Applications will be added in future updates if possible.
+>
+> **Production Recommendation**: For production deployments, use a **service account** (dedicated GitHub user) to generate the PAT and adjust security settings as needed for your organization. If you use a standard user account and that account is removed or deactivated, the PAT will be invalidated and the runners will stop working.
 >
 > **How to create a Classic PAT:**
 > 1. Go to GitHub Settings -> Developer settings -> Personal access tokens -> Tokens (classic).
